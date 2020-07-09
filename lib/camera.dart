@@ -1,18 +1,22 @@
+import 'dart:io';
+import 'dart:core';
+import 'dart:async';
+import 'dart:convert';
+import 'package:async/async.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:tflite/tflite.dart';
 import 'dart:math' as math;
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
-import 'models.dart';
-
-typedef void Callback(List<dynamic> list, int h, int w);
+typedef void Callback(String resultText);
 
 class Camera extends StatefulWidget {
   final List<CameraDescription> cameras;
-  final Callback setRecognitions;
-  final String model;
+  final Callback setResultText;
 
-  Camera(this.cameras, this.model, this.setRecognitions);
+  Camera(this.cameras, this.setResultText);
 
   @override
   _CameraState createState() => new _CameraState();
@@ -20,7 +24,7 @@ class Camera extends StatefulWidget {
 
 class _CameraState extends State<Camera> {
   CameraController controller;
-  bool isDetecting = false;
+  String imageUrl = "";
 
   @override
   void initState() {
@@ -31,77 +35,58 @@ class _CameraState extends State<Camera> {
     } else {
       controller = new CameraController(
         widget.cameras[0],
-        ResolutionPreset.high,
+        ResolutionPreset.medium,
       );
       controller.initialize().then((_) {
         if (!mounted) {
           return;
         }
         setState(() {});
-
-        controller.startImageStream((CameraImage img) {
-          if (!isDetecting) {
-            isDetecting = true;
-
-            int startTime = new DateTime.now().millisecondsSinceEpoch;
-
-            if (widget.model == mobilenet) {
-              Tflite.runModelOnFrame(
-                bytesList: img.planes.map((plane) {
-                  return plane.bytes;
-                }).toList(),
-                imageHeight: img.height,
-                imageWidth: img.width,
-                numResults: 2,
-              ).then((recognitions) {
-                int endTime = new DateTime.now().millisecondsSinceEpoch;
-                print("Detection took ${endTime - startTime}");
-
-                widget.setRecognitions(recognitions, img.height, img.width);
-
-                isDetecting = false;
-              });
-            } else if (widget.model == posenet) {
-              Tflite.runPoseNetOnFrame(
-                bytesList: img.planes.map((plane) {
-                  return plane.bytes;
-                }).toList(),
-                imageHeight: img.height,
-                imageWidth: img.width,
-                numResults: 2,
-              ).then((recognitions) {
-                int endTime = new DateTime.now().millisecondsSinceEpoch;
-                print("Detection took ${endTime - startTime}");
-
-                widget.setRecognitions(recognitions, img.height, img.width);
-
-                isDetecting = false;
-              });
-            } else {
-              Tflite.detectObjectOnFrame(
-                bytesList: img.planes.map((plane) {
-                  return plane.bytes;
-                }).toList(),
-                model: widget.model == yolo ? "YOLO" : "SSDMobileNet",
-                imageHeight: img.height,
-                imageWidth: img.width,
-                imageMean: widget.model == yolo ? 0 : 127.5,
-                imageStd: widget.model == yolo ? 255.0 : 127.5,
-                numResultsPerClass: 1,
-                threshold: widget.model == yolo ? 0.2 : 0.4,
-              ).then((recognitions) {
-                int endTime = new DateTime.now().millisecondsSinceEpoch;
-                print("Detection took ${endTime - startTime}");
-
-                widget.setRecognitions(recognitions, img.height, img.width);
-
-                isDetecting = false;
-              });
-            }
-          }
-        });
+        const interval = const Duration(milliseconds: 1000);
+        new Timer.periodic(interval, (Timer t) => capturePictures());
       });
     }
+  }
+
+  void parseResponse(var response) {
+    imageUrl = "https://socdist.enis.dev/${response['file_name']}";
+    setState(() {
+      widget.setResultText(imageUrl);
+    });
+  }
+
+  Future<Map<String, dynamic>> fetchResponse(File image) async {
+    var fileStream =
+        new http.ByteStream(DelegatingStream.typed(image.openRead()));
+    var length = await image.length();
+
+    var request = new http.MultipartRequest(
+        "POST", Uri.parse('https://socdist.enis.dev/predict'));
+    var multipartFile = new http.MultipartFile('file', fileStream, length,
+        filename: 'uploaded.jpg');
+    request.files.add(multipartFile);
+    try {
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      final Map<String, dynamic> responseData = jsonDecode(response.body);
+      parseResponse(responseData);
+      return responseData;
+    } catch (e) {
+      print(e);
+      return null;
+    }
+  }
+
+  capturePictures() async {
+    String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final Directory extDir = await getApplicationDocumentsDirectory();
+    final String dirPath = '${extDir.path}/Pictures/social_dist';
+    await Directory(dirPath).create(recursive: true);
+    final String filePath = '$dirPath/$timestamp.jpg';
+    controller.takePicture(filePath).then((_) {
+      File imgFile = File(filePath);
+      fetchResponse(imgFile);
+    });
   }
 
   @override
@@ -126,11 +111,14 @@ class _CameraState extends State<Camera> {
     var previewRatio = previewH / previewW;
 
     return OverflowBox(
-      maxHeight:
-          screenRatio > previewRatio ? screenH : screenW / previewW * previewH,
-      maxWidth:
-          screenRatio > previewRatio ? screenH / previewH * previewW : screenW,
-      child: CameraPreview(controller),
-    );
+        maxHeight: screenRatio > previewRatio
+            ? screenH
+            : screenW / previewW * previewH,
+        maxWidth: screenRatio > previewRatio
+            ? screenH / previewH * previewW
+            : screenW,
+        child: Image.network(imageUrl)
+        // CameraPreview(controller),
+        );
   }
 }
