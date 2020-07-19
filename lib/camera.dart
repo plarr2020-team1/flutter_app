@@ -24,6 +24,7 @@ class Camera extends StatefulWidget {
 
 class _CameraState extends State<Camera> {
   CameraController controller;
+  String prevprevImage = "";
   String prevImage = "";
   String imageUrl = "";
 
@@ -50,6 +51,7 @@ class _CameraState extends State<Camera> {
   }
 
   void parseResponse(var response) {
+    prevprevImage = prevImage;
     prevImage = imageUrl;
     imageUrl = "https://socdist.enis.dev/${response['file_name']}";
     setState(() {
@@ -121,6 +123,7 @@ class _CameraState extends State<Camera> {
             : screenW,
         child: Stack(
           children: <Widget>[
+            Center(child: Image.network(prevprevImage)),
             Center(child: Image.network(prevImage)),
             Center(child: Image.network(imageUrl)),
           ],
