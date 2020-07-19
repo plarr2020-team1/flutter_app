@@ -24,6 +24,7 @@ class Camera extends StatefulWidget {
 
 class _CameraState extends State<Camera> {
   CameraController controller;
+  String prevImage = "";
   String imageUrl = "";
 
   @override
@@ -49,6 +50,7 @@ class _CameraState extends State<Camera> {
   }
 
   void parseResponse(var response) {
+    prevImage = imageUrl;
     imageUrl = "https://socdist.enis.dev/${response['file_name']}";
     setState(() {
       widget.setResultText(imageUrl);
@@ -117,8 +119,13 @@ class _CameraState extends State<Camera> {
         maxWidth: screenRatio > previewRatio
             ? screenH / previewH * previewW
             : screenW,
-        child: Image.network(imageUrl)
-        // CameraPreview(controller),
+        child: Stack(
+          children: <Widget>[
+            Center(child: Image.network(prevImage)),
+            Center(child: Image.network(imageUrl)),
+          ],
+        )
+        // CameraPreview(controller)
         );
   }
 }
