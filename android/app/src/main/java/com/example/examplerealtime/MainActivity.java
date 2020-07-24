@@ -1,4 +1,4 @@
-package com.example.examplerealtime;
+package com.socdist.flutter_app;
 
 import android.os.Bundle;
 import io.flutter.app.FlutterActivity;
