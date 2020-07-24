@@ -1,7 +1,7 @@
 # Flutter App for Social Distancing
 
 ## Requirements
-- Flutter v1.19.0
+- Flutter v1.17.5
 
 ## Install 
 
